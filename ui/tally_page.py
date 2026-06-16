@@ -88,7 +88,7 @@ class TallyBookPage(ctk.CTkFrame):
             ("converted", "Converted", 120, "e"),
             ("note", "Note", 200, "w"),
         ):
-            self._tree.heading(col, text=label)
+            self._tree.heading(col, text=label, anchor=anchor)
             self._tree.column(col, width=width, anchor=anchor)
         self._tree.pack(fill="both", expand=True, padx=12, pady=6)
 
