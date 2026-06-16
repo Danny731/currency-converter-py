@@ -30,6 +30,10 @@ class ExchangeRateService:
         self._has_rates = False
         self._last_update_date = ""
         self._pending_base = Currency.USD
+        # Original base->target rates from the last successful fetch, kept so
+        # callers can persist them for offline reuse.
+        self._base_currency = Currency.USD
+        self._base_rates: dict[Currency, float] = {}
 
     @property
     def converter(self) -> CurrencyConverter:
@@ -42,6 +46,15 @@ class ExchangeRateService:
     @property
     def last_update_date(self) -> str:
         return self._last_update_date
+
+    @property
+    def base_currency(self) -> Currency:
+        return self._base_currency
+
+    @property
+    def base_rates(self) -> dict[Currency, float]:
+        # Return a copy so callers cannot mutate the service's internal state.
+        return dict(self._base_rates)
 
     def fetch_rates(self, base_currency: Currency,
                     on_success: Callable[[], None],
@@ -69,6 +82,7 @@ class ExchangeRateService:
 
             converter = CurrencyConverter()
             base = self._pending_base
+            base_rates: dict[Currency, float] = {}
             for code, rate in rates_obj.items():
                 target = currency_from_string(code)
                 if target is None:
@@ -77,6 +91,7 @@ class ExchangeRateService:
                 converter.set_rate(base, target, value)
                 if value > 0.0:
                     converter.set_rate(target, base, 1.0 / value)
+                base_rates[target] = value
 
             # Cross rates through the base for any pair not yet covered.
             for frm in supported_currencies():
@@ -89,6 +104,8 @@ class ExchangeRateService:
                         converter.set_rate(frm, to, from_base * base_to)
 
             self._converter = converter
+            self._base_currency = base
+            self._base_rates = base_rates
             self._has_rates = True
             self._last_update_date = data.get("date", "")
             on_success()

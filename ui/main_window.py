@@ -7,6 +7,7 @@ import customtkinter as ctk
 from core.currency import Currency, supported_currencies
 from core.converter import CurrencyConverter
 from core.rate_service import ExchangeRateService
+from storage import rate_storage
 from ui.converter_page import ConverterPage
 from ui.tally_page import TallyBookPage
 
@@ -36,6 +37,9 @@ class MainWindow(ctk.CTk):
         self._converter = CurrencyConverter()
         self._setup_mock_rates()
         self._rate_service = ExchangeRateService()
+        # Prefer saved offline rates over the hardcoded mock snapshot so an
+        # offline launch starts with the last-known-good rates instead.
+        self._offline_loaded_date = self._load_offline_rates()
 
         self._tabview = ctk.CTkTabview(self)
         self._tabview.pack(fill="both", expand=True, padx=12, pady=(12, 0))
@@ -51,8 +55,7 @@ class MainWindow(ctk.CTk):
         self._tally_page.set_converter(self._converter)
 
         self._status = ctk.CTkLabel(
-            self, text="Using mock exchange rates. Fetching live rates...",
-            anchor="w",
+            self, text=self._initial_status_text(), anchor="w",
         )
         self._status.pack(fill="x", padx=12, pady=(6, 12))
 
@@ -60,19 +63,40 @@ class MainWindow(ctk.CTk):
         self._fetch_live_rates()
 
     # --- rates ---
-    def _setup_mock_rates(self) -> None:
-        for cur, rate in _MOCK_USD_RATES.items():
-            self._converter.set_rate(Currency.USD, cur, rate)
+    def _seed_rates(self, base: Currency,
+                    base_rates: dict[Currency, float]) -> None:
+        """Populate the converter from a base->targets rate table, deriving
+        inverse and cross rates. Shared by mock, offline, and live snapshots."""
+        for cur, rate in base_rates.items():
+            self._converter.set_rate(base, cur, rate)
             if rate > 0.0:
-                self._converter.set_rate(cur, Currency.USD, 1.0 / rate)
+                self._converter.set_rate(cur, base, 1.0 / rate)
         for frm in supported_currencies():
             for to in supported_currencies():
                 if frm == to or self._converter.has_rate(frm, to):
                     continue
-                from_usd = self._converter.convert(1.0, frm, Currency.USD)
-                usd_to = self._converter.convert(1.0, Currency.USD, to)
-                if from_usd > 0.0 and usd_to > 0.0:
-                    self._converter.set_rate(frm, to, from_usd * usd_to)
+                from_base = self._converter.convert(1.0, frm, base)
+                base_to = self._converter.convert(1.0, base, to)
+                if from_base > 0.0 and base_to > 0.0:
+                    self._converter.set_rate(frm, to, from_base * base_to)
+
+    def _setup_mock_rates(self) -> None:
+        self._seed_rates(Currency.USD, _MOCK_USD_RATES)
+
+    def _load_offline_rates(self) -> str | None:
+        """Loads the last persisted rate snapshot. Returns the snapshot's date
+        when available, otherwise None (leaving the mock rates in place)."""
+        ok, base, rates, date = rate_storage.load()
+        if not ok:
+            return None
+        self._seed_rates(base, rates)
+        return date
+
+    def _initial_status_text(self) -> str:
+        if self._offline_loaded_date:
+            return (f"Using saved offline rates (date: "
+                    f"{self._offline_loaded_date}). Fetching live rates...")
+        return "Using mock exchange rates. Fetching live rates..."
 
     def _fetch_live_rates(self) -> None:
         self._rate_service.fetch_rates(
@@ -85,6 +109,12 @@ class MainWindow(ctk.CTk):
         self._converter = self._rate_service.converter
         self._converter_page.set_converter(self._converter)
         self._tally_page.set_converter(self._converter)
+        # Persist the freshly fetched rates so they're available offline next launch.
+        rate_storage.save(
+            self._rate_service.base_currency,
+            self._rate_service.base_rates,
+            self._rate_service.last_update_date,
+        )
         self._status.configure(
             text=f"Live rates loaded (source: Frankfurter API, date: "
                  f"{self._rate_service.last_update_date})"
@@ -94,9 +124,15 @@ class MainWindow(ctk.CTk):
         self.after(0, lambda r=reason: self._show_failure(r))
 
     def _show_failure(self, reason: str) -> None:
-        self._status.configure(
-            text=f"Could not load live rates: {reason} — using mock rates."
-        )
+        if self._offline_loaded_date:
+            self._status.configure(
+                text=f"Could not load live rates: {reason} — using saved "
+                     f"offline rates (date: {self._offline_loaded_date})."
+            )
+        else:
+            self._status.configure(
+                text=f"Could not load live rates: {reason} — using mock rates."
+            )
 
     # --- appearance ---
     def _style_treeview(self) -> None:

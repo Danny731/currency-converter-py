@@ -2,33 +2,21 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from datetime import datetime
 
 from core.currency import Currency, currency_to_string, currency_from_string
 from core.tally import TallyEntry
+from . import app_data_dir
 
 FILE_NAME = "tallybook.json"
-# Distinct from the C++ app's "CurrencyConverter" directory so this Python
-# version starts with its own fresh data file.
-ORG_NAME = "FloatingO"
-APP_NAME = "CurrencyConverterPy"
 
 _DEFAULT_TARGET = Currency.USD
 
 
 def storage_file_path() -> str:
-    """Returns the absolute path of the JSON storage file, creating its
-    parent directory if needed. Location follows per-user OS conventions."""
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-        path = os.path.join(base, ORG_NAME, APP_NAME)
-    elif sys.platform == "darwin":
-        path = os.path.expanduser(f"~/Library/Application Support/{ORG_NAME}/{APP_NAME}")
-    else:
-        path = os.path.expanduser(f"~/.local/share/{ORG_NAME}/{APP_NAME}")
-    os.makedirs(path, exist_ok=True)
-    return os.path.join(path, FILE_NAME)
+    """Returns the absolute path of the JSON storage file. Location follows
+    per-user OS conventions (directory created by app_data_dir)."""
+    return os.path.join(app_data_dir(), FILE_NAME)
 
 
 def save(entries: list[TallyEntry], target_currency: Currency) -> bool:
