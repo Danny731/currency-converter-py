@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import sys
 import tkinter.ttk as ttk
 
@@ -24,6 +25,26 @@ def _ui_font_family() -> str:
     if sys.platform == "win32":
         return "Segoe UI"
     return "DejaVu Sans"
+
+
+def _relative_rate_date(rate_date: str, today: date | None = None) -> str:
+    """Return a user-friendly age label for an ISO rate date."""
+    if not rate_date:
+        return "unknown date"
+    today = today or date.today()
+    try:
+        parsed = date.fromisoformat(rate_date)
+    except ValueError:
+        return rate_date
+    days = (today - parsed).days
+    if days == 0:
+        return "today"
+    if days > 0:
+        unit = "day" if days == 1 else "days"
+        return f"{days} {unit} ago"
+    future_days = abs(days)
+    unit = "day" if future_days == 1 else "days"
+    return f"in {future_days} {unit}"
 
 # Mock fallback rates (approximate, relative to USD), used until the first
 # live fetch completes or whenever the network is unavailable.
@@ -97,9 +118,9 @@ class MainWindow(ctk.CTk):
 
     def _initial_status_text(self) -> str:
         if self._offline_loaded_date:
-            return (f"Using saved offline rates (date: "
-                    f"{self._offline_loaded_date}). Fetching live rates...")
-        return "Using mock exchange rates. Fetching live rates..."
+            return (f"Offline cache · {self._relative_offline_date_label()}. "
+                    f"Fetching live rates...")
+        return "Built-in reference rates. Fetching live rates..."
 
     def _fetch_live_rates(self) -> None:
         self._rate_service.fetch_rates(
@@ -118,10 +139,12 @@ class MainWindow(ctk.CTk):
             self._rate_service.base_rates,
             self._rate_service.last_update_date,
         )
-        status = (f"Live rates loaded (source: Frankfurter API, date: "
-                  f"{self._rate_service.last_update_date})")
+        status = (
+            f"Live rates · {self._rate_service.last_update_date} "
+            f"({_relative_rate_date(self._rate_service.last_update_date)})"
+        )
         if not saved:
-            status += " — note: could not cache rates for offline use."
+            status += "; note: could not cache rates for offline use."
         self._status.configure(text=status)
 
     def _on_fetch_failed(self, reason: str) -> None:
@@ -130,13 +153,16 @@ class MainWindow(ctk.CTk):
     def _show_failure(self, reason: str) -> None:
         if self._offline_loaded_date:
             self._status.configure(
-                text=f"Could not load live rates: {reason} — using saved "
-                     f"offline rates (date: {self._offline_loaded_date})."
+                text=f"Could not load live rates: {reason}; offline cache · "
+                     f"{self._relative_offline_date_label()}"
             )
         else:
             self._status.configure(
-                text=f"Could not load live rates: {reason} — using mock rates."
+                text=f"Could not load live rates: {reason}; built-in reference rates"
             )
+
+    def _relative_offline_date_label(self) -> str:
+        return _relative_rate_date(self._offline_loaded_date or "")
 
     # --- appearance ---
     def _style_treeview(self) -> None:

@@ -37,9 +37,14 @@ class ConverterPage(ctk.CTkFrame):
         self._amount_entry.pack(fill="x", **pad)
         self._amount_entry.bind("<Return>", lambda _e: self._on_convert())
 
-        ctk.CTkButton(self, text="Convert", command=self._on_convert).pack(
-            fill="x", padx=12, pady=(10, 6)
+        btns = ctk.CTkFrame(self, fg_color="transparent")
+        btns.pack(fill="x", padx=12, pady=(10, 6))
+        ctk.CTkButton(btns, text="Convert", command=self._on_convert).pack(
+            side="left", expand=True, fill="x", padx=(0, 4)
         )
+        ctk.CTkButton(
+            btns, text="Swap with Selected", command=self._on_swap_selected,
+        ).pack(side="left", expand=True, fill="x", padx=(4, 0))
 
         # Results table (Currency | Amount).
         self._tree = ttk.Treeview(
@@ -61,9 +66,53 @@ class ConverterPage(ctk.CTkFrame):
     def _source_currency(self) -> Currency:
         return currency_from_string(self._source_var.get()) or Currency.USD
 
+    def _selected_currency(self) -> Currency | None:
+        selected = self._tree.selection()
+        if not selected:
+            return None
+        return currency_from_string(str(selected[0]))
+
+    def _format_amount_input(self, value: float, currency: Currency) -> str:
+        decimals = CurrencyConverter.decimal_places(currency)
+        return f"{value:.{decimals}f}"
+
     def _clear_results(self) -> None:
         for c in supported_currencies():
             self._tree.set(currency_to_string(c), "amount", "--")
+
+    def _on_swap_selected(self) -> None:
+        if self._converter is None:
+            self._status.configure(text="No converter available.")
+            return
+
+        target = self._selected_currency()
+        if target is None:
+            self._status.configure(text="Select a result row to swap with.")
+            return
+
+        source = self._source_currency()
+        if target == source:
+            self._status.configure(text="Select a different currency to swap with.")
+            return
+
+        amount = parse_amount(self._amount_entry.get().strip())
+        if amount is None:
+            self._status.configure(text="Enter a valid amount before swapping.")
+            self._clear_results()
+            return
+
+        swapped_amount = self._converter.convert(amount, source, target)
+        if swapped_amount < 0.0:
+            self._status.configure(text="Cannot swap because the exchange rate is missing.")
+            return
+
+        self._source_var.set(currency_to_string(target))
+        self._amount_entry.delete(0, "end")
+        self._amount_entry.insert(0, self._format_amount_input(swapped_amount, target))
+        self._on_convert()
+        self._tree.selection_set(currency_to_string(source))
+        self._tree.focus(currency_to_string(source))
+        self._status.configure(text="Swapped with selected currency.")
 
     def _on_convert(self) -> None:
         if self._converter is None:
@@ -91,7 +140,7 @@ class ConverterPage(ctk.CTkFrame):
                 if c != source:
                     missing += 1
             else:
-                self._tree.set(code, "amount", CurrencyConverter.format_result(result))
+                self._tree.set(code, "amount", CurrencyConverter.format_result(result, c))
 
         if missing > 0:
             self._status.configure(text=f"Conversion complete. {missing} rate(s) missing.")

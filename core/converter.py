@@ -76,7 +76,11 @@ class CurrencyConverter:
         return (frm, to) in self._rates
 
     @staticmethod
-    def format_result(value: float) -> str:
+    def decimal_places(currency: Currency) -> int:
+        return 0 if currency == Currency.JPY else 2
+
+    @staticmethod
+    def format_result(value: float, currency: Currency) -> str:
         if value < 0.0:
             return "--"
-        return f"{value:,.2f}"
+        return f"{value:,.{CurrencyConverter.decimal_places(currency)}f}"

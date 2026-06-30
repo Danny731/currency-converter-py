@@ -86,7 +86,7 @@ class TallyBookPage(ctk.CTkFrame):
             ("amount", "Amount", 110, "e"),
             ("currency", "Currency", 90, "w"),
             ("converted", "Converted", 120, "e"),
-            ("note", "Note", 200, "w"),
+            ("note", "Note", 200, "center"),
         ):
             self._tree.heading(col, text=label, anchor=anchor)
             self._tree.column(col, width=width, anchor=anchor)
@@ -172,11 +172,12 @@ class TallyBookPage(ctk.CTkFrame):
 
     def _refresh_table(self) -> None:
         self._tree.delete(*self._tree.get_children())
+        target_currency = self._current_target_currency()
         for e in self._tally.entries():
             self._tree.insert("", "end", values=(
-                CurrencyConverter.format_result(e.amount),
+                CurrencyConverter.format_result(e.amount, e.currency),
                 currency_to_string(e.currency),
-                CurrencyConverter.format_result(e.converted_amount),
+                CurrencyConverter.format_result(e.converted_amount, target_currency),
                 e.note,
             ))
 
@@ -184,9 +185,10 @@ class TallyBookPage(ctk.CTkFrame):
         if self._tally.count() == 0:
             self._total_label.configure(text="Total: --")
         else:
+            target_currency = self._current_target_currency()
             self._total_label.configure(
-                text=f"Total: {CurrencyConverter.format_result(self._tally.total())} "
-                     f"{currency_to_string(self._current_target_currency())}"
+                text=f"Total: {CurrencyConverter.format_result(self._tally.total(), target_currency)} "
+                     f"{currency_to_string(target_currency)}"
             )
 
     def _load_state(self) -> None:

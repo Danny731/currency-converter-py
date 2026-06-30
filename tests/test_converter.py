@@ -66,9 +66,19 @@ def test_set_and_convert():
 
 
 def test_format_result():
-    assert CurrencyConverter.format_result(-1.0) == "--"
-    assert CurrencyConverter.format_result(1234.5) == "1,234.50"
-    assert CurrencyConverter.format_result(0.0) == "0.00"
+    assert CurrencyConverter.format_result(-1.0, Currency.USD) == "--"
+    assert CurrencyConverter.format_result(1234567.89, Currency.USD) == "1,234,567.89"
+    assert CurrencyConverter.format_result(0.0, Currency.CNY) == "0.00"
+
+
+def test_format_result_uses_zero_decimals_for_jpy():
+    assert CurrencyConverter.format_result(12345.6, Currency.JPY) == "12,346"
+    assert CurrencyConverter.format_result(12345.4, Currency.JPY) == "12,345"
+
+
+def test_decimal_places_by_currency():
+    assert CurrencyConverter.decimal_places(Currency.JPY) == 0
+    assert CurrencyConverter.decimal_places(Currency.USD) == 2
 
 
 # --- seed_from_base: the consolidated derivation logic ---
