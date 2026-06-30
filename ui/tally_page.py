@@ -11,7 +11,7 @@ from core.currency import (
     currency_to_string,
     currency_from_string,
 )
-from core.converter import CurrencyConverter
+from core.converter import CurrencyConverter, parse_amount
 from core.tally import TallyEntry, TallyBook
 from storage import tally_storage
 
@@ -113,7 +113,8 @@ class TallyBookPage(ctk.CTkFrame):
             self._tally.recalculate(self._current_target_currency(), self._converter)
             self._refresh_table()
             self._update_total()
-        self._save_state()
+        if not self._save_state():
+            self._status.configure(text="Warning: could not save to disk.")
 
     def _on_add(self) -> None:
         if self._converter is None:
@@ -123,11 +124,8 @@ class TallyBookPage(ctk.CTkFrame):
         if not text:
             self._status.configure(text="Please enter an amount.")
             return
-        try:
-            amount = float(text)
-        except ValueError:
-            amount = -1.0
-        if amount < 0.0:
+        amount = parse_amount(text)
+        if amount is None:
             self._status.configure(text="Invalid amount. Please enter a non-negative number.")
             return
 
@@ -144,8 +142,7 @@ class TallyBookPage(ctk.CTkFrame):
         self._note_entry.delete(0, "end")
         self._refresh_table()
         self._update_total()
-        self._save_state()
-        self._status.configure(text="Entry added.")
+        self._finish("Entry added.")
 
     def _on_delete(self) -> None:
         selected = self._tree.selection()
@@ -158,8 +155,7 @@ class TallyBookPage(ctk.CTkFrame):
             self._tally.remove_entry(row)
         self._refresh_table()
         self._update_total()
-        self._save_state()
-        self._status.configure(text="Entry deleted.")
+        self._finish("Entry deleted.")
 
     def _on_clear(self) -> None:
         if self._tally.count() == 0:
@@ -172,8 +168,7 @@ class TallyBookPage(ctk.CTkFrame):
             self._tally.clear()
             self._refresh_table()
             self._update_total()
-            self._save_state()
-            self._status.configure(text="All entries cleared.")
+            self._finish("All entries cleared.")
 
     def _refresh_table(self) -> None:
         self._tree.delete(*self._tree.get_children())
@@ -209,5 +204,16 @@ class TallyBookPage(ctk.CTkFrame):
         self._refresh_table()
         self._update_total()
 
-    def _save_state(self) -> None:
-        tally_storage.save(self._tally.entries(), self._current_target_currency())
+    def _save_state(self) -> bool:
+        return tally_storage.save(self._tally.entries(), self._current_target_currency())
+
+    def _finish(self, success_msg: str) -> None:
+        """Persist state and report the outcome. On a save failure the user is
+        warned explicitly rather than silently risking lost data."""
+        if self._save_state():
+            self._status.configure(text=success_msg)
+        else:
+            self._status.configure(
+                text="Warning: could not save to disk. Your changes may be "
+                     "lost on exit."
+            )

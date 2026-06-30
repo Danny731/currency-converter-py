@@ -80,28 +80,21 @@ class ExchangeRateService:
                 on_failure("No rates found in API response.")
                 return
 
-            converter = CurrencyConverter()
             base = self._pending_base
             base_rates: dict[Currency, float] = {}
             for code, rate in rates_obj.items():
                 target = currency_from_string(code)
                 if target is None:
                     continue
-                value = float(rate)
-                converter.set_rate(base, target, value)
-                if value > 0.0:
-                    converter.set_rate(target, base, 1.0 / value)
+                try:
+                    value = float(rate)
+                except (TypeError, ValueError):
+                    continue
                 base_rates[target] = value
 
-            # Cross rates through the base for any pair not yet covered.
-            for frm in supported_currencies():
-                for to in supported_currencies():
-                    if frm == to or converter.has_rate(frm, to):
-                        continue
-                    from_base = converter.convert(1.0, frm, base)
-                    base_to = converter.convert(1.0, base, to)
-                    if from_base > 0.0 and base_to > 0.0:
-                        converter.set_rate(frm, to, from_base * base_to)
+            # Derive inverse and cross rates in one shared place.
+            converter = CurrencyConverter()
+            converter.seed_from_base(base, base_rates)
 
             self._converter = converter
             self._base_currency = base

@@ -17,3 +17,4 @@ Thumbs.db
 
 # Local launch scripts (depend on a local .venv)
 launch.bat
+launch.command

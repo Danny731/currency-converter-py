@@ -10,7 +10,7 @@ from core.currency import (
     currency_to_string,
     currency_from_string,
 )
-from core.converter import CurrencyConverter
+from core.converter import CurrencyConverter, parse_amount
 
 
 class ConverterPage(ctk.CTkFrame):
@@ -75,11 +75,8 @@ class ConverterPage(ctk.CTkFrame):
             self._status.configure(text="Please enter an amount.")
             self._clear_results()
             return
-        try:
-            amount = float(text)
-        except ValueError:
-            amount = -1.0
-        if amount < 0.0:
+        amount = parse_amount(text)
+        if amount is None:
             self._status.configure(text="Invalid amount. Please enter a non-negative number.")
             self._clear_results()
             return

@@ -1,15 +1,29 @@
 from __future__ import annotations
 
+import sys
 import tkinter.ttk as ttk
 
 import customtkinter as ctk
 
-from core.currency import Currency, supported_currencies
+from core.currency import Currency
 from core.converter import CurrencyConverter
 from core.rate_service import ExchangeRateService
 from storage import rate_storage
 from ui.converter_page import ConverterPage
 from ui.tally_page import TallyBookPage
+
+
+def _ui_font_family() -> str:
+    """Pick a sane default UI font for the current platform.
+
+    The original Windows port hardcoded "Segoe UI", which does not exist on
+    macOS/Linux and silently falls back to an arbitrary default there.
+    """
+    if sys.platform == "darwin":
+        return "SF Pro Text"
+    if sys.platform == "win32":
+        return "Segoe UI"
+    return "DejaVu Sans"
 
 # Mock fallback rates (approximate, relative to USD), used until the first
 # live fetch completes or whenever the network is unavailable.
@@ -67,18 +81,7 @@ class MainWindow(ctk.CTk):
                     base_rates: dict[Currency, float]) -> None:
         """Populate the converter from a base->targets rate table, deriving
         inverse and cross rates. Shared by mock, offline, and live snapshots."""
-        for cur, rate in base_rates.items():
-            self._converter.set_rate(base, cur, rate)
-            if rate > 0.0:
-                self._converter.set_rate(cur, base, 1.0 / rate)
-        for frm in supported_currencies():
-            for to in supported_currencies():
-                if frm == to or self._converter.has_rate(frm, to):
-                    continue
-                from_base = self._converter.convert(1.0, frm, base)
-                base_to = self._converter.convert(1.0, base, to)
-                if from_base > 0.0 and base_to > 0.0:
-                    self._converter.set_rate(frm, to, from_base * base_to)
+        self._converter.seed_from_base(base, base_rates)
 
     def _setup_mock_rates(self) -> None:
         self._seed_rates(Currency.USD, _MOCK_USD_RATES)
@@ -110,15 +113,16 @@ class MainWindow(ctk.CTk):
         self._converter_page.set_converter(self._converter)
         self._tally_page.set_converter(self._converter)
         # Persist the freshly fetched rates so they're available offline next launch.
-        rate_storage.save(
+        saved = rate_storage.save(
             self._rate_service.base_currency,
             self._rate_service.base_rates,
             self._rate_service.last_update_date,
         )
-        self._status.configure(
-            text=f"Live rates loaded (source: Frankfurter API, date: "
-                 f"{self._rate_service.last_update_date})"
-        )
+        status = (f"Live rates loaded (source: Frankfurter API, date: "
+                  f"{self._rate_service.last_update_date})")
+        if not saved:
+            status += " — note: could not cache rates for offline use."
+        self._status.configure(text=status)
 
     def _on_fetch_failed(self, reason: str) -> None:
         self.after(0, lambda r=reason: self._show_failure(r))
@@ -146,13 +150,14 @@ class MainWindow(ctk.CTk):
         bg = "#2b2b2b" if dark else "#ebebeb"
         fg = "#ffffff" if dark else "#1a1a1a"
         head_bg = "#3a3a3a" if dark else "#d6d6d6"
+        font_family = _ui_font_family()
         style.configure(
             "Treeview", background=bg, foreground=fg, fieldbackground=bg,
-            rowheight=26, borderwidth=0, font=("Segoe UI", 12),
+            rowheight=26, borderwidth=0, font=(font_family, 12),
         )
         style.configure(
             "Treeview.Heading", background=head_bg, foreground=fg,
-            borderwidth=0, font=("Segoe UI", 12, "bold"),
+            borderwidth=0, font=(font_family, 12, "bold"),
         )
         style.map("Treeview", background=[("selected", "#1f6aa5")])
         style.map("Treeview.Heading", background=[("active", head_bg)])

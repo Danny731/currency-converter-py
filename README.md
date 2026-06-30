@@ -22,7 +22,7 @@ Supported currencies: CNY, USD, GBP, EUR, AUD, CAD, JPY, SGD.
 
 ## Requirements
 
-- Python 3.14+
+- Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (recommended) — or plain `pip`
 
 ## Setup & Run (with uv)
