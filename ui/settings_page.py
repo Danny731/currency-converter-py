@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tkinter.ttk as ttk
 from typing import Callable
 
 import customtkinter as ctk
@@ -22,8 +23,9 @@ class SettingsPage(ctk.CTkFrame):
         self._on_save = on_save
         self._settings = settings
         self._currency_vars: dict[str, ctk.BooleanVar] = {}
-        self._currency_list_frame: ctk.CTkScrollableFrame | None = None
+        self._currency_tree: ttk.Treeview | None = None
         self._available_codes: list[str] = []
+        self._currency_names: dict[str, str] = {}
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -72,8 +74,33 @@ class SettingsPage(ctk.CTkFrame):
             command=self._clear_currencies,
         ).pack(side="right")
 
-        self._currency_list_frame = ctk.CTkScrollableFrame(self, height=130)
-        self._currency_list_frame.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        currency_frame = ctk.CTkFrame(self, fg_color="transparent")
+        currency_frame.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        currency_frame.grid_columnconfigure(0, weight=1)
+        currency_frame.grid_rowconfigure(0, weight=1)
+        self._currency_tree = ttk.Treeview(
+            currency_frame,
+            columns=("enabled", "currency"),
+            show="headings",
+            height=6,
+            selectmode="browse",
+        )
+        currency_scrollbar = ctk.CTkScrollbar(
+            currency_frame,
+            height=1,
+            orientation="vertical",
+            command=self._currency_tree.yview,
+        )
+        self._currency_tree.configure(yscrollcommand=currency_scrollbar.set)
+        self._currency_tree.heading("enabled", text="On", anchor="center")
+        self._currency_tree.heading("currency", text="Currency", anchor="w")
+        self._currency_tree.column("enabled", width=56, minwidth=56, anchor="center",
+                                   stretch=False)
+        self._currency_tree.column("currency", width=420, anchor="w")
+        self._currency_tree.grid(row=0, column=0, sticky="nsew")
+        currency_scrollbar.grid(row=0, column=1, sticky="ns")
+        self._currency_tree.bind("<ButtonRelease-1>", self._on_currency_tree_click)
+        self._currency_tree.bind("<space>", self._on_currency_tree_space)
         self._rebuild_currency_checkboxes(codes)
 
         ctk.CTkButton(self, text="Save Settings", command=self._on_save_clicked).pack(
@@ -83,10 +110,13 @@ class SettingsPage(ctk.CTkFrame):
                                     wraplength=540)
         self._status.pack(fill="x", padx=12, pady=(0, 8))
 
-    def refresh_supported_currencies(self, available_codes: list[str] | None = None) -> None:
+    def refresh_supported_currencies(self, available_codes: list[str] | None = None,
+                                     currency_names: dict[str, str] | None = None) -> None:
         codes = available_codes or [currency_to_string(c) for c in supported_currencies()]
         if not codes:
             return
+        if currency_names is not None:
+            self._currency_names = currency_names
         self._available_codes = codes
         self._source_menu.configure(values=codes)
         self._target_menu.configure(values=codes)
@@ -94,7 +124,7 @@ class SettingsPage(ctk.CTkFrame):
             self._source_var.set(codes[0])
         if self._target_var.get() not in codes:
             self._target_var.set(codes[0])
-        self._rebuild_currency_checkboxes(codes)
+        self._rebuild_currency_checkboxes(codes, self._currency_names)
 
     def _enabled_currency_codes(self) -> list[str]:
         return [
@@ -105,17 +135,22 @@ class SettingsPage(ctk.CTkFrame):
     def _select_all_currencies(self) -> None:
         for var in self._currency_vars.values():
             var.set(True)
+        self._refresh_currency_tree_marks()
 
     def _clear_currencies(self) -> None:
         for var in self._currency_vars.values():
             var.set(False)
+        self._refresh_currency_tree_marks()
 
     def _selected_currency(self, value: str, fallback: Currency) -> Currency:
         return Currency(value) if is_currency_code_shape(value) else fallback
 
-    def _rebuild_currency_checkboxes(self, available_codes: list[str] | None = None) -> None:
-        if self._currency_list_frame is None:
+    def _rebuild_currency_checkboxes(self, available_codes: list[str] | None = None,
+                                     currency_names: dict[str, str] | None = None) -> None:
+        if self._currency_tree is None:
             return
+        if currency_names is not None:
+            self._currency_names = currency_names
         selected = set(self._enabled_currency_codes())
         if not selected:
             selected = set(self._settings.enabled_currencies)
@@ -127,16 +162,60 @@ class SettingsPage(ctk.CTkFrame):
         if not selected:
             selected = set(codes)
 
-        for child in self._currency_list_frame.winfo_children():
-            child.destroy()
+        self._currency_tree.delete(*self._currency_tree.get_children())
         self._currency_vars.clear()
 
-        for row, code in enumerate(codes):
+        for code in codes:
             var = ctk.BooleanVar(value=code in selected)
             self._currency_vars[code] = var
-            ctk.CTkCheckBox(
-                self._currency_list_frame, text=code, variable=var,
-            ).grid(row=row // 4, column=row % 4, sticky="w", padx=8, pady=4)
+            self._currency_tree.insert(
+                "",
+                "end",
+                iid=code,
+                values=(self._currency_mark(code), self._currency_label(code)),
+            )
+
+    def _currency_label(self, code: str) -> str:
+        name = self._currency_names.get(code, "").strip()
+        if not name or name.upper() == code:
+            return code
+        return f"{code} · {name}"
+
+    def _currency_mark(self, code: str) -> str:
+        var = self._currency_vars.get(code)
+        return "✓" if var is not None and var.get() else ""
+
+    def _refresh_currency_tree_marks(self) -> None:
+        if self._currency_tree is None:
+            return
+        for code in self._currency_tree.get_children():
+            self._currency_tree.set(code, "enabled", self._currency_mark(str(code)))
+
+    def _toggle_currency_row(self, code: str) -> None:
+        if self._currency_tree is None:
+            return
+        var = self._currency_vars.get(code)
+        if var is None:
+            return
+        var.set(not var.get())
+        self._currency_tree.set(code, "enabled", self._currency_mark(code))
+        self._currency_tree.selection_set(code)
+        self._currency_tree.focus(code)
+
+    def _on_currency_tree_click(self, event) -> None:
+        if self._currency_tree is None:
+            return
+        row = self._currency_tree.identify_row(event.y)
+        if row:
+            self._toggle_currency_row(str(row))
+
+    def _on_currency_tree_space(self, _event) -> str:
+        if self._currency_tree is None:
+            return "break"
+        row = self._currency_tree.focus()
+        if row:
+            self._toggle_currency_row(str(row))
+        return "break"
 
     def _on_save_clicked(self) -> None:
         settings = AppSettings(

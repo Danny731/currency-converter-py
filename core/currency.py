@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CurrencyInfo:
+    code: str
+    name: str
+
 
 class Currency(str):
     """Currency code value object.
@@ -61,6 +69,39 @@ _DEFAULT_AVAILABLE_CODES = (
     "ZAR",
 )
 
+_DEFAULT_AVAILABLE_NAMES = {
+    "AUD": "Australian Dollar",
+    "BRL": "Brazilian Real",
+    "CAD": "Canadian Dollar",
+    "CHF": "Swiss Franc",
+    "CNY": "Chinese Renminbi Yuan",
+    "CZK": "Czech Koruna",
+    "DKK": "Danish Krone",
+    "EUR": "Euro",
+    "GBP": "British Pound",
+    "HKD": "Hong Kong Dollar",
+    "HUF": "Hungarian Forint",
+    "IDR": "Indonesian Rupiah",
+    "ILS": "Israeli New Sheqel",
+    "INR": "Indian Rupee",
+    "ISK": "Icelandic Krona",
+    "JPY": "Japanese Yen",
+    "KRW": "South Korean Won",
+    "MXN": "Mexican Peso",
+    "MYR": "Malaysian Ringgit",
+    "NOK": "Norwegian Krone",
+    "NZD": "New Zealand Dollar",
+    "PHP": "Philippine Peso",
+    "PLN": "Polish Zloty",
+    "RON": "Romanian Leu",
+    "SEK": "Swedish Krona",
+    "SGD": "Singapore Dollar",
+    "THB": "Thai Baht",
+    "TRY": "Turkish Lira",
+    "USD": "United States Dollar",
+    "ZAR": "South African Rand",
+}
+
 _currency_cache: dict[str, Currency] = {}
 _supported_codes: list[str] = list(_DEFAULT_SUPPORTED_CODES)
 
@@ -88,6 +129,17 @@ def default_supported_currencies() -> list[Currency]:
 
 def default_available_currency_codes() -> list[str]:
     return list(_DEFAULT_AVAILABLE_CODES)
+
+
+def default_available_currency_names() -> dict[str, str]:
+    return dict(_DEFAULT_AVAILABLE_NAMES)
+
+
+def default_available_currency_info() -> list[CurrencyInfo]:
+    return [
+        CurrencyInfo(code=code, name=_DEFAULT_AVAILABLE_NAMES.get(code, code))
+        for code in _DEFAULT_AVAILABLE_CODES
+    ]
 
 
 def supported_currencies() -> list[Currency]:

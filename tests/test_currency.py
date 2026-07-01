@@ -3,6 +3,8 @@ from __future__ import annotations
 from core.currency import (
     Currency,
     default_available_currency_codes,
+    default_available_currency_info,
+    default_available_currency_names,
     default_supported_currencies,
     supported_currencies,
     set_supported_currencies,
@@ -74,3 +76,13 @@ def test_default_available_currency_codes_include_frankfurter_set():
     assert "USD" in codes
     assert "MXN" in codes
     assert "ZAR" in codes
+
+
+def test_default_available_currency_names_cover_fallback_codes():
+    codes = default_available_currency_codes()
+    names = default_available_currency_names()
+
+    assert all(code in names for code in codes)
+    assert names["USD"] == "United States Dollar"
+    assert names["JPY"] == "Japanese Yen"
+    assert default_available_currency_info()[0].code == codes[0]

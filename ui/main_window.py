@@ -8,8 +8,10 @@ import customtkinter as ctk
 
 from core.currency import (
     Currency,
+    CurrencyInfo,
     currency_to_string,
     default_available_currency_codes,
+    default_available_currency_names,
     set_supported_currencies,
     supported_currencies,
 )
@@ -75,9 +77,10 @@ class MainWindow(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Multifunctional Currency Converter")
-        self.geometry("780x580")
-        self.minsize(620, 480)
+        self.geometry("820x740")
+        self.minsize(720, 640)
         self._available_currency_codes: list[str] = default_available_currency_codes()
+        self._available_currency_names: dict[str, str] = default_available_currency_names()
         self._load_cached_supported_currencies()
         self._settings = self._load_settings()
         set_supported_currencies(self._active_currency_codes())
@@ -91,8 +94,13 @@ class MainWindow(ctk.CTk):
         # offline launch starts with the last-known-good rates instead.
         self._offline_loaded_date = self._load_offline_rates()
 
+        self._status = ctk.CTkLabel(
+            self, text=self._initial_status_text(), anchor="w",
+        )
+        self._status.pack(side="bottom", fill="x", padx=12, pady=(6, 12))
+
         self._tabview = ctk.CTkTabview(self)
-        self._tabview.pack(fill="both", expand=True, padx=12, pady=(12, 0))
+        self._tabview.pack(side="top", fill="both", expand=True, padx=12, pady=(12, 0))
         self._tabview.add("Currency Converter")
         self._tabview.add("Tally Book")
         self._tabview.add("Rate History")
@@ -123,12 +131,10 @@ class MainWindow(ctk.CTk):
             self._tabview.tab("Settings"), self._settings, self._save_settings,
         )
         self._settings_page.pack(fill="both", expand=True)
-        self._settings_page.refresh_supported_currencies(self._available_currency_codes)
-
-        self._status = ctk.CTkLabel(
-            self, text=self._initial_status_text(), anchor="w",
+        self._settings_page.refresh_supported_currencies(
+            self._available_currency_codes,
+            self._available_currency_names,
         )
-        self._status.pack(fill="x", padx=12, pady=(6, 12))
 
         self.after(50, self._style_treeview)
         self._fetch_live_rates()
@@ -140,10 +146,21 @@ class MainWindow(ctk.CTk):
         return settings
 
     def _load_cached_supported_currencies(self) -> None:
-        ok, codes = currency_storage.load()
+        ok, infos = currency_storage.load_info()
         if ok:
+            codes = [info.code for info in infos]
             self._available_currency_codes = codes
+            self._available_currency_names = self._currency_names_for(infos)
             set_supported_currencies(codes)
+
+    def _currency_names_for(self, infos: list[CurrencyInfo]) -> dict[str, str]:
+        names = default_available_currency_names()
+        names.update({
+            info.code: info.name
+            for info in infos
+            if info.name and info.name.upper() != info.code
+        })
+        return names
 
     def _save_settings(self, settings: AppSettings) -> bool:
         settings = self._normalize_settings(settings)
@@ -204,7 +221,10 @@ class MainWindow(ctk.CTk):
         self._converter_page.refresh_supported_currencies()
         self._tally_page.refresh_supported_currencies()
         self._history_page.refresh_supported_currencies()
-        self._settings_page.refresh_supported_currencies(self._available_currency_codes)
+        self._settings_page.refresh_supported_currencies(
+            self._available_currency_codes,
+            self._available_currency_names,
+        )
 
     def _fetch_supported_currencies(self) -> None:
         self._rate_service.fetch_supported_currencies(
@@ -213,9 +233,10 @@ class MainWindow(ctk.CTk):
             on_failure=self._on_currencies_failed,
         )
 
-    def _apply_supported_currencies(self, currencies: list[Currency]) -> None:
-        self._available_currency_codes = [currency_to_string(c) for c in currencies]
-        currency_storage.save(self._available_currency_codes)
+    def _apply_supported_currencies(self, currencies: list[CurrencyInfo]) -> None:
+        self._available_currency_codes = [info.code for info in currencies]
+        self._available_currency_names = self._currency_names_for(currencies)
+        currency_storage.save(self._available_currency_codes, self._available_currency_names)
         set_supported_currencies(self._active_currency_codes())
         self._refresh_currency_ui()
         # Refresh rates again now that the full runtime currency list is known.

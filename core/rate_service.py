@@ -9,6 +9,7 @@ import requests
 
 from .currency import (
     Currency,
+    CurrencyInfo,
     supported_currencies,
     currency_to_string,
     currency_from_string,
@@ -48,11 +49,22 @@ def parse_history_rates(data: dict, target_currency: Currency) -> list[Historica
 
 
 def parse_supported_currency_codes(data: dict) -> list[str]:
-    return sorted(
-        code.strip().upper()
-        for code in data
-        if isinstance(code, str) and is_currency_code_shape(code)
-    )
+    return [info.code for info in parse_supported_currency_info(data)]
+
+
+def parse_supported_currency_info(data: dict) -> list[CurrencyInfo]:
+    infos: list[CurrencyInfo] = []
+    for code, name in data.items():
+        if not isinstance(code, str) or not is_currency_code_shape(code):
+            continue
+        clean = code.strip().upper()
+        display_name = str(name).strip() if name else clean
+        infos.append(CurrencyInfo(code=clean, name=display_name))
+    return sorted(infos, key=lambda info: info.code)
+
+
+def currency_info_codes(infos: list[CurrencyInfo]) -> list[str]:
+    return [info.code for info in infos]
 
 
 class ExchangeRateService:
@@ -143,7 +155,7 @@ class ExchangeRateService:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def fetch_supported_currencies(self, on_success: Callable[[list[Currency]], None],
+    def fetch_supported_currencies(self, on_success: Callable[[list[CurrencyInfo]], None],
                                    on_failure: Callable[[str], None]) -> None:
         def worker() -> None:
             try:
@@ -161,13 +173,14 @@ class ExchangeRateService:
                 on_failure("Invalid currencies in API response.")
                 return
 
-            codes = parse_supported_currency_codes(data)
-            if not codes:
+            infos = parse_supported_currency_info(data)
+            if not infos:
                 on_failure("No currencies found in API response.")
                 return
 
+            codes = currency_info_codes(infos)
             set_supported_currencies(codes)
-            on_success([Currency(code) for code in codes])
+            on_success(infos)
 
     def fetch_history(self, base_currency: Currency, target_currency: Currency,
                       days: int, on_success: Callable[[list[HistoricalRatePoint]], None],

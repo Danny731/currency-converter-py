@@ -63,9 +63,16 @@ class ConverterPage(ctk.CTkFrame):
         ).pack(side="left", expand=True, fill="x", padx=(4, 0))
 
         # Results table (Currency | Amount).
+        results_frame = ctk.CTkFrame(self, fg_color="transparent")
+        results_frame.pack(fill="both", expand=True, padx=12, pady=6)
+        results_frame.grid_columnconfigure(0, weight=1)
+        results_frame.grid_rowconfigure(0, weight=1)
         self._tree = ttk.Treeview(
-            self, columns=("currency", "amount"), show="headings", height=9
+            results_frame, columns=("currency", "amount"), show="headings", height=9
         )
+        results_scrollbar = ctk.CTkScrollbar(
+            results_frame, height=1, orientation="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=results_scrollbar.set)
         self._tree.heading("currency", text="Currency")
         self._tree.heading("amount", text="Amount")
         self._tree.column("currency", width=170, anchor="w")
@@ -73,7 +80,8 @@ class ConverterPage(ctk.CTkFrame):
         for c in supported_currencies():
             code = currency_to_string(c)
             self._tree.insert("", "end", iid=code, values=(code, "--"))
-        self._tree.pack(fill="both", expand=True, padx=12, pady=6)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        results_scrollbar.grid(row=0, column=1, sticky="ns")
 
         history_bar = ctk.CTkFrame(self, fg_color="transparent")
         history_bar.pack(fill="x", padx=12, pady=(4, 2))
@@ -86,16 +94,23 @@ class ConverterPage(ctk.CTkFrame):
             command=self._on_clear_history,
         ).pack(side="right")
 
+        history_frame = ctk.CTkFrame(self, fg_color="transparent")
+        history_frame.pack(fill="both", expand=False, padx=12, pady=(0, 6))
+        history_frame.grid_columnconfigure(0, weight=1)
         self._history_tree = ttk.Treeview(
-            self, columns=("time", "source", "amount"), show="headings", height=5
+            history_frame, columns=("time", "source", "amount"), show="headings", height=5
         )
+        history_scrollbar = ctk.CTkScrollbar(
+            history_frame, height=1, orientation="vertical", command=self._history_tree.yview)
+        self._history_tree.configure(yscrollcommand=history_scrollbar.set)
         self._history_tree.heading("time", text="Time")
         self._history_tree.heading("source", text="Source")
         self._history_tree.heading("amount", text="Amount")
         self._history_tree.column("time", width=145, anchor="center")
         self._history_tree.column("source", width=90, anchor="w")
         self._history_tree.column("amount", width=170, anchor="e")
-        self._history_tree.pack(fill="both", expand=False, padx=12, pady=(0, 6))
+        self._history_tree.grid(row=0, column=0, sticky="nsew")
+        history_scrollbar.grid(row=0, column=1, sticky="ns")
         self._history_tree.bind("<Double-1>", self._on_history_double_click)
 
         self._status = ctk.CTkLabel(self, text="", anchor="w", justify="left",

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from core.currency import Currency
-from core.rate_service import parse_history_rates, parse_supported_currency_codes
+from core.currency import Currency, CurrencyInfo
+from core.rate_service import (
+    parse_history_rates,
+    parse_supported_currency_codes,
+    parse_supported_currency_info,
+)
 
 
 def test_parse_history_rates_sorts_dates_and_reads_target_currency():
@@ -53,3 +57,18 @@ def test_parse_supported_currency_codes_filters_and_sorts_codes():
     }
 
     assert parse_supported_currency_codes(data) == ["EUR", "JPY", "USD"]
+
+
+def test_parse_supported_currency_info_keeps_readable_names():
+    data = {
+        "usd": "US Dollar",
+        "JPY": "Japanese Yen",
+        "bad-code": "Bad",
+        "CHF": "",
+    }
+
+    assert parse_supported_currency_info(data) == [
+        CurrencyInfo(code="CHF", name="CHF"),
+        CurrencyInfo(code="JPY", name="Japanese Yen"),
+        CurrencyInfo(code="USD", name="US Dollar"),
+    ]

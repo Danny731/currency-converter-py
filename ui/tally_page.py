@@ -102,10 +102,17 @@ class TallyBookPage(ctk.CTkFrame):
             side="left", expand=True, fill="x", padx=(4, 0))
 
         # Entries table.
+        table_frame = ctk.CTkFrame(self, fg_color="transparent")
+        table_frame.pack(fill="both", expand=True, padx=12, pady=6)
+        table_frame.grid_columnconfigure(0, weight=1)
+        table_frame.grid_rowconfigure(0, weight=1)
         self._tree = ttk.Treeview(
-            self, columns=("time", "amount", "currency", "converted", "note"),
+            table_frame, columns=("time", "amount", "currency", "converted", "note"),
             show="headings", height=8, selectmode="extended",
         )
+        table_scrollbar = ctk.CTkScrollbar(
+            table_frame, height=1, orientation="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=table_scrollbar.set)
         for col, label, width, anchor in (
             ("time", "Time", 145, "center"),
             ("amount", "Amount", 110, "e"),
@@ -115,7 +122,8 @@ class TallyBookPage(ctk.CTkFrame):
         ):
             self._tree.heading(col, text=label, anchor=anchor)
             self._tree.column(col, width=width, anchor=anchor)
-        self._tree.pack(fill="both", expand=True, padx=12, pady=6)
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        table_scrollbar.grid(row=0, column=1, sticky="ns")
         self._tree.bind("<Double-1>", self._on_tree_double_click)
 
         self._total_label = ctk.CTkLabel(
