@@ -6,11 +6,22 @@ import tkinter.ttk as ttk
 
 import customtkinter as ctk
 
-from core.currency import Currency
+from core.currency import (
+    Currency,
+    currency_to_string,
+    default_available_currency_codes,
+    set_supported_currencies,
+    supported_currencies,
+)
 from core.converter import CurrencyConverter
 from core.rate_service import ExchangeRateService
+from storage import currency_storage
 from storage import rate_storage
+from storage import settings as settings_storage
+from storage.settings import AppSettings
 from ui.converter_page import ConverterPage
+from ui.history_page import HistoryPage
+from ui.settings_page import SettingsPage
 from ui.tally_page import TallyBookPage
 
 
@@ -66,7 +77,11 @@ class MainWindow(ctk.CTk):
         self.title("Multifunctional Currency Converter")
         self.geometry("780x580")
         self.minsize(620, 480)
-        ctk.set_appearance_mode("System")
+        self._available_currency_codes: list[str] = default_available_currency_codes()
+        self._load_cached_supported_currencies()
+        self._settings = self._load_settings()
+        set_supported_currencies(self._active_currency_codes())
+        ctk.set_appearance_mode(self._settings.theme)
         ctk.set_default_color_theme("blue")
 
         self._converter = CurrencyConverter()
@@ -80,14 +95,35 @@ class MainWindow(ctk.CTk):
         self._tabview.pack(fill="both", expand=True, padx=12, pady=(12, 0))
         self._tabview.add("Currency Converter")
         self._tabview.add("Tally Book")
+        self._tabview.add("Rate History")
+        self._tabview.add("Settings")
 
-        self._converter_page = ConverterPage(self._tabview.tab("Currency Converter"))
+        self._converter_page = ConverterPage(
+            self._tabview.tab("Currency Converter"),
+            default_source=self._settings.default_source_currency,
+            decimal_places=self._settings.decimal_places,
+        )
         self._converter_page.pack(fill="both", expand=True)
         self._converter_page.set_converter(self._converter)
 
-        self._tally_page = TallyBookPage(self._tabview.tab("Tally Book"))
+        self._tally_page = TallyBookPage(
+            self._tabview.tab("Tally Book"),
+            default_source=self._settings.default_source_currency,
+            default_target=self._settings.default_target_currency,
+            decimal_places=self._settings.decimal_places,
+        )
         self._tally_page.pack(fill="both", expand=True)
         self._tally_page.set_converter(self._converter)
+
+        self._history_page = HistoryPage(self._tabview.tab("Rate History"))
+        self._history_page.pack(fill="both", expand=True)
+        self._history_page.set_rate_service(self._rate_service)
+
+        self._settings_page = SettingsPage(
+            self._tabview.tab("Settings"), self._settings, self._save_settings,
+        )
+        self._settings_page.pack(fill="both", expand=True)
+        self._settings_page.refresh_supported_currencies(self._available_currency_codes)
 
         self._status = ctk.CTkLabel(
             self, text=self._initial_status_text(), anchor="w",
@@ -96,8 +132,105 @@ class MainWindow(ctk.CTk):
 
         self.after(50, self._style_treeview)
         self._fetch_live_rates()
+        self._fetch_supported_currencies()
 
     # --- rates ---
+    def _load_settings(self) -> AppSettings:
+        _ok, settings = settings_storage.load()
+        return settings
+
+    def _load_cached_supported_currencies(self) -> None:
+        ok, codes = currency_storage.load()
+        if ok:
+            self._available_currency_codes = codes
+            set_supported_currencies(codes)
+
+    def _save_settings(self, settings: AppSettings) -> bool:
+        settings = self._normalize_settings(settings)
+        saved = settings_storage.save(settings)
+        if saved:
+            self._settings = settings
+            self._apply_settings()
+        return saved
+
+    def _normalize_settings(self, settings: AppSettings) -> AppSettings:
+        available = self._available_currency_codes or [
+            currency_to_string(c) for c in supported_currencies()
+        ]
+        enabled = settings.enabled_currencies or tuple(available)
+        if len(enabled) < 2:
+            enabled = tuple(available)
+        source = settings.default_source_currency
+        target = settings.default_target_currency
+        if currency_to_string(source) not in enabled:
+            source = Currency(enabled[0])
+        if currency_to_string(target) not in enabled:
+            target = Currency(enabled[1] if len(enabled) > 1 else enabled[0])
+        return AppSettings(
+            theme=settings.theme,
+            default_source_currency=source,
+            default_target_currency=target,
+            decimal_places=settings.decimal_places,
+            enabled_currencies=tuple(enabled),
+        )
+
+    def _apply_settings(self) -> None:
+        set_supported_currencies(self._active_currency_codes())
+        ctk.set_appearance_mode(self._settings.theme)
+        self._refresh_currency_ui()
+        self._converter_page.apply_preferences(
+            self._settings.default_source_currency,
+            self._settings.decimal_places,
+        )
+        self._tally_page.apply_preferences(
+            self._settings.default_source_currency,
+            self._settings.default_target_currency,
+            self._settings.decimal_places,
+        )
+        self.after(0, self._style_treeview)
+        self._fetch_live_rates()
+
+    def _active_currency_codes(self) -> list[str]:
+        available = self._available_currency_codes or [
+            currency_to_string(c) for c in supported_currencies()
+        ]
+        if not self._settings.enabled_currencies:
+            return available
+        enabled = set(self._settings.enabled_currencies)
+        selected = [code for code in available if code in enabled]
+        return selected if len(selected) >= 2 else available
+
+    def _refresh_currency_ui(self) -> None:
+        self._converter_page.refresh_supported_currencies()
+        self._tally_page.refresh_supported_currencies()
+        self._history_page.refresh_supported_currencies()
+        self._settings_page.refresh_supported_currencies(self._available_currency_codes)
+
+    def _fetch_supported_currencies(self) -> None:
+        self._rate_service.fetch_supported_currencies(
+            on_success=lambda currencies:
+                self.after(0, lambda: self._apply_supported_currencies(currencies)),
+            on_failure=self._on_currencies_failed,
+        )
+
+    def _apply_supported_currencies(self, currencies: list[Currency]) -> None:
+        self._available_currency_codes = [currency_to_string(c) for c in currencies]
+        currency_storage.save(self._available_currency_codes)
+        set_supported_currencies(self._active_currency_codes())
+        self._refresh_currency_ui()
+        # Refresh rates again now that the full runtime currency list is known.
+        self._fetch_live_rates()
+
+    def _on_currencies_failed(self, reason: str) -> None:
+        self.after(0, lambda r=reason: self._show_currencies_failure(r))
+
+    def _show_currencies_failure(self, reason: str) -> None:
+        if not self._rate_service.has_rates:
+            self._status.configure(
+                text=f"Could not load full currency list: {reason}; "
+                     f"using cached or built-in currencies."
+            )
+
     def _seed_rates(self, base: Currency,
                     base_rates: dict[Currency, float]) -> None:
         """Populate the converter from a base->targets rate table, deriving

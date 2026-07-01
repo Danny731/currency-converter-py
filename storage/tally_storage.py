@@ -9,6 +9,7 @@ from core.tally import TallyEntry
 from . import app_data_dir
 
 FILE_NAME = "tallybook.json"
+SCHEMA_VERSION = 1
 
 _DEFAULT_TARGET = Currency.USD
 
@@ -21,6 +22,7 @@ def storage_file_path() -> str:
 
 def save(entries: list[TallyEntry], target_currency: Currency) -> bool:
     data = {
+        "version": SCHEMA_VERSION,
         "targetCurrency": currency_to_string(target_currency),
         "entries": [
             {

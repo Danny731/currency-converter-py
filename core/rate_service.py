@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import date, timedelta
 import threading
 from typing import Callable
 
@@ -10,11 +12,47 @@ from .currency import (
     supported_currencies,
     currency_to_string,
     currency_from_string,
+    is_currency_code_shape,
+    set_supported_currencies,
 )
 from .converter import CurrencyConverter
 
-API_BASE_URL = "https://api.frankfurter.dev/v1/latest"
+API_ROOT_URL = "https://api.frankfurter.dev/v1"
+API_BASE_URL = f"{API_ROOT_URL}/latest"
+API_CURRENCIES_URL = f"{API_ROOT_URL}/currencies"
 _TIMEOUT = 15  # seconds
+
+
+@dataclass(frozen=True)
+class HistoricalRatePoint:
+    date: str
+    rate: float
+
+
+def parse_history_rates(data: dict, target_currency: Currency) -> list[HistoricalRatePoint]:
+    points: list[HistoricalRatePoint] = []
+    target_code = currency_to_string(target_currency)
+    rates_by_date = data.get("rates") or {}
+    if not isinstance(rates_by_date, dict):
+        return points
+
+    for rate_date, rates in sorted(rates_by_date.items()):
+        if not isinstance(rates, dict):
+            continue
+        try:
+            value = float(rates[target_code])
+        except (KeyError, TypeError, ValueError):
+            continue
+        points.append(HistoricalRatePoint(date=str(rate_date), rate=value))
+    return points
+
+
+def parse_supported_currency_codes(data: dict) -> list[str]:
+    return sorted(
+        code.strip().upper()
+        for code in data
+        if isinstance(code, str) and is_currency_code_shape(code)
+    )
 
 
 class ExchangeRateService:
@@ -102,5 +140,69 @@ class ExchangeRateService:
             self._has_rates = True
             self._last_update_date = data.get("date", "")
             on_success()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def fetch_supported_currencies(self, on_success: Callable[[list[Currency]], None],
+                                   on_failure: Callable[[str], None]) -> None:
+        def worker() -> None:
+            try:
+                resp = requests.get(API_CURRENCIES_URL, timeout=_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+            except requests.RequestException as e:
+                on_failure(f"Network error: {e}")
+                return
+            except ValueError:
+                on_failure("Invalid JSON in API response.")
+                return
+
+            if not isinstance(data, dict):
+                on_failure("Invalid currencies in API response.")
+                return
+
+            codes = parse_supported_currency_codes(data)
+            if not codes:
+                on_failure("No currencies found in API response.")
+                return
+
+            set_supported_currencies(codes)
+            on_success([Currency(code) for code in codes])
+
+    def fetch_history(self, base_currency: Currency, target_currency: Currency,
+                      days: int, on_success: Callable[[list[HistoricalRatePoint]], None],
+                      on_failure: Callable[[str], None]) -> None:
+        if base_currency == target_currency:
+            on_failure("Choose two different currencies.")
+            return
+        if days <= 0:
+            on_failure("History range must be positive.")
+            return
+
+        end = date.today()
+        start = end - timedelta(days=days)
+        url = f"{API_ROOT_URL}/{start.isoformat()}..{end.isoformat()}"
+        params = {
+            "from": currency_to_string(base_currency),
+            "to": currency_to_string(target_currency),
+        }
+
+        def worker() -> None:
+            try:
+                resp = requests.get(url, params=params, timeout=_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+            except requests.RequestException as e:
+                on_failure(f"Network error: {e}")
+                return
+            except ValueError:
+                on_failure("Invalid JSON in API response.")
+                return
+
+            points = parse_history_rates(data, target_currency)
+            if not points:
+                on_failure("No historical rates found in API response.")
+                return
+            on_success(points)
 
         threading.Thread(target=worker, daemon=True).start()

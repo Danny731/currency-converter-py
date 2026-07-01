@@ -41,6 +41,24 @@ class TallyBook:
         if 0 <= index < len(self._entries):
             del self._entries[index]
 
+    def update_entry(self, index: int, amount: float, currency: Currency,
+                     target_currency: Currency, converter: CurrencyConverter,
+                     note: str) -> bool:
+        if not 0 <= index < len(self._entries):
+            return False
+        converted = converter.convert(amount, currency, target_currency)
+        if converted < 0.0 and currency != target_currency:
+            return False
+        existing = self._entries[index]
+        self._entries[index] = TallyEntry(
+            amount=amount,
+            currency=currency,
+            converted_amount=(amount if currency == target_currency else converted),
+            note=note,
+            created_at=existing.created_at,
+        )
+        return True
+
     def clear(self) -> None:
         self._entries.clear()
 

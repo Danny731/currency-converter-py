@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from core.currency import Currency
@@ -63,6 +65,45 @@ def test_remove_entry_out_of_range_is_noop():
     book = TallyBook()
     book.remove_entry(5)  # must not raise
     assert book.count() == 0
+
+
+def test_update_entry_recalculates_and_preserves_created_at():
+    conv = _converter()
+    book = TallyBook()
+    created_at = datetime(2026, 7, 1, 9, 30)
+    book.add_entry(TallyEntry(amount=7.0, currency=Currency.CNY,
+                              note="old", created_at=created_at),
+                   Currency.USD, conv)
+
+    ok = book.update_entry(0, 16.0, Currency.GBP, Currency.USD, conv, "new")
+
+    assert ok is True
+    entry = book.entries()[0]
+    assert entry.amount == 16.0
+    assert entry.currency == Currency.GBP
+    assert entry.converted_amount == pytest.approx(20.0)
+    assert entry.note == "new"
+    assert entry.created_at == created_at
+
+
+def test_update_entry_rejected_on_missing_rate():
+    conv = _converter()  # has no rate to JPY
+    book = TallyBook()
+    book.add_entry(TallyEntry(amount=10.0, currency=Currency.USD),
+                   Currency.USD, conv)
+
+    ok = book.update_entry(0, 5.0, Currency.JPY, Currency.USD, conv, "bad")
+
+    assert ok is False
+    entry = book.entries()[0]
+    assert entry.amount == 10.0
+    assert entry.currency == Currency.USD
+
+
+def test_update_entry_out_of_range_returns_false():
+    assert TallyBook().update_entry(
+        0, 10.0, Currency.USD, Currency.USD, _converter(), "",
+    ) is False
 
 
 def test_clear():

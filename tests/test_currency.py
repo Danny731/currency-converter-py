@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from core.currency import (
     Currency,
+    default_available_currency_codes,
+    default_supported_currencies,
     supported_currencies,
+    set_supported_currencies,
     currency_to_string,
     currency_from_string,
     is_valid_currency_code,
@@ -40,3 +43,34 @@ def test_is_valid_currency_code():
     assert is_valid_currency_code("EUR") is True
     assert is_valid_currency_code("eur") is True
     assert is_valid_currency_code("BTC") is False
+
+
+def test_set_supported_currencies_updates_runtime_list():
+    original = [currency_to_string(c) for c in supported_currencies()]
+    try:
+        set_supported_currencies(["usd", "mxn", "usd", "bad-code", "JPY"])
+
+        assert [currency_to_string(c) for c in supported_currencies()] == [
+            "USD", "MXN", "JPY",
+        ]
+        assert currency_from_string("mxn") == Currency("MXN")
+        assert is_valid_currency_code("CNY") is False
+    finally:
+        set_supported_currencies(original)
+
+
+def test_set_supported_currencies_falls_back_to_defaults_when_empty():
+    original = [currency_to_string(c) for c in supported_currencies()]
+    try:
+        set_supported_currencies([])
+        assert supported_currencies() == default_supported_currencies()
+    finally:
+        set_supported_currencies(original)
+
+
+def test_default_available_currency_codes_include_frankfurter_set():
+    codes = default_available_currency_codes()
+    assert len(codes) >= 30
+    assert "USD" in codes
+    assert "MXN" in codes
+    assert "ZAR" in codes

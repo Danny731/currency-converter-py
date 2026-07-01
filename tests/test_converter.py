@@ -81,6 +81,11 @@ def test_decimal_places_by_currency():
     assert CurrencyConverter.decimal_places(Currency.USD) == 2
 
 
+def test_format_result_accepts_custom_default_decimal_places():
+    assert CurrencyConverter.format_result(1234.567, Currency.USD, 3) == "1,234.567"
+    assert CurrencyConverter.format_result(1234.567, Currency.JPY, 3) == "1,235"
+
+
 # --- seed_from_base: the consolidated derivation logic ---
 
 def test_seed_from_base_sets_direct_and_inverse():

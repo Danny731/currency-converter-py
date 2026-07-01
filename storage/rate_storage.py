@@ -7,6 +7,7 @@ from core.currency import Currency, currency_to_string, currency_from_string
 from . import app_data_dir
 
 FILE_NAME = "rates.json"
+SCHEMA_VERSION = 1
 
 _DEFAULT_BASE = Currency.USD
 
@@ -23,6 +24,7 @@ def save(base: Currency, base_rates: dict[Currency, float], date: str) -> bool:
     rates are re-derived on load via MainWindow._seed_rates.
     """
     data = {
+        "version": SCHEMA_VERSION,
         "base": currency_to_string(base),
         "date": date,
         "rates": {currency_to_string(c): v for c, v in base_rates.items()},
